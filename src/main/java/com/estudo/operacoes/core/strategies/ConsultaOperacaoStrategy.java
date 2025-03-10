@@ -18,6 +18,6 @@ public class ConsultaOperacaoStrategy implements ConsultaOperacao{
 
     @Override
     public Mono<List<Operacao>> consultar(ConsultaRequest request) {
-        return operacaoProvider.buscarOperacoesPorId(request);
+        return operacaoProvider.buscarOperacoesPorId(request, null);
     }
 }

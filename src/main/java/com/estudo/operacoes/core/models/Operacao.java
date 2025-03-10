@@ -23,6 +23,7 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class Operacao {
 
+    String codigo;
     private OperacaoData operacao;
     private List<ParcelaData> parcelas;
     private List<StatusData> status = new ArrayList<>();

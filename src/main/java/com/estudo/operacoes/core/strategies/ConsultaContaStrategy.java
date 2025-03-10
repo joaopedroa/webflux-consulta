@@ -17,6 +17,6 @@ public class ConsultaContaStrategy implements ConsultaOperacao {
 
     @Override
     public Mono<List<Operacao>> consultar(ConsultaRequest request) {
-        return operacaoProvider.buscarOperacoesPorIdConta(request);
+        return Mono.empty();//operacaoProvider.buscarOperacoesPorIdConta(request);
     }
 }

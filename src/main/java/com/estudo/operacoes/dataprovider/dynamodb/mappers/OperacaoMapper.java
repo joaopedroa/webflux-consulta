@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -23,8 +24,9 @@ public class OperacaoMapper {
 
     private final DadosDominioMapper dadosDominioMapper;
 
-    public List<Operacao> fromMap(QueryResponse response, ConsultaRequest request) {
-        return response.items().stream()
+    public List<Operacao> fromMap(List<QueryResponse> response, ConsultaRequest request) {
+        List<Map<String, AttributeValue>> items = response.stream().flatMap(x -> x.items().stream()).toList();
+        return items.stream()
                 .map(item -> new OperacaoTable(
                         Long.valueOf(item.get("id_operacao").s()),
                         Optional.ofNullable(item.get("id_cliente")).map(AttributeValue::s).orElse(""),
@@ -34,7 +36,7 @@ public class OperacaoMapper {
                 ).collect(Collectors.groupingBy(OperacaoTable::getIdOperacao))
                 .values().stream()
                 .map(this::tratar)
-                .map(operacao -> this.tratarErroDominioNaoEncontrado(operacao, request.getExpand()))
+//                .map(operacao -> this.tratarErroDominioNaoEncontrado(operacao, request.getExpand()))
                 .collect(Collectors.toList());
     }
 
@@ -66,7 +68,8 @@ public class OperacaoMapper {
     private Operacao tratar(List<OperacaoTable> operacoes) {
         final Operacao operacao = new Operacao();
         operacoes.forEach(operacaoTable -> {
-            switch (operacaoTable.getDominio()) {
+            System.out.println("Operacaoooooo " + operacaoTable.getDominio());
+            switch (operacaoTable.getDominio().split("#")[0]) {
                 case "OPERACAO" ->
                         operacao.setOperacao(dadosDominioMapper.converterOperacaoData(operacaoTable.getDadosDominio()));
                 case "PARCELA" ->
