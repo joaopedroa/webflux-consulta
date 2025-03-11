@@ -5,16 +5,15 @@ import com.estudo.operacoes.core.models.Operacao;
 import com.estudo.operacoes.core.providers.OperacaoProvider;
 import com.estudo.operacoes.dataprovider.dynamodb.mappers.OperacaoMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.CollectionUtils;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,20 +23,33 @@ public class OperacaoRepository implements OperacaoProvider {
 
     private final DynamoDbAsyncClient dynamoDbAsyncClient;
     private final OperacaoMapper operacaoMapper;
+    private final ReactiveRedisTemplate<String, Operacao> reactiveRedisTemplate;
 
-    public Mono<List<Operacao>> buscarOperacoesPorId(ConsultaRequest request, QueryRequest requestDynamo) {
-        if (requestDynamo == null) {
-            requestDynamo = QueryRequest.builder()
-                    .tableName("tb_operacoes")
-                    .expressionAttributeValues(Map.of(":op", AttributeValue.builder().s(request.getIdOperacao()).build()))
-                    .keyConditionExpression("#id_operacao = :op")
-                    .expressionAttributeNames(Map.of("#id_operacao", "id_operacao"))
-                    .limit(15)
-                    .build();
-        }
+    public Mono<List<Operacao>> buscarOperacoesPorId(ConsultaRequest request, final QueryRequest requestDynamo) {
 
-        return getQueryResponse(request, requestDynamo, new ArrayList<>())
-                .map(x -> operacaoMapper.fromMap(x, request));
+        return Mono.just(request)
+
+                .flatMap(x -> {
+                    if (requestDynamo == null) {
+                        var requestAux = QueryRequest.builder()
+                                .tableName("tb_operacoes")
+                                .expressionAttributeValues(Map.of(":op", AttributeValue.builder().s(request.getIdOperacao()).build()))
+                                .keyConditionExpression("#id_operacao = :op")
+                                .expressionAttributeNames(Map.of("#id_operacao", "id_operacao"))
+                                .limit(15)
+                                .build();
+                        return Mono.fromCompletionStage(dynamoDbAsyncClient.query(requestAux));
+                    }
+                    return Mono.fromCompletionStage(dynamoDbAsyncClient.query(requestDynamo));
+                })
+                .map(x -> this.operacaoMapper.fromMap(List.of(x), request))
+                .map(x -> {
+                    reactiveRedisTemplate.opsForList().leftPushAll("operacoes:", x).doOnNext(z -> {
+                        System.out.println("salvo");
+                    }).subscribe();
+
+                    return x;
+                });
     }
 
     private Mono<List<QueryResponse>> getQueryResponse(ConsultaRequest consultaRequest, QueryRequest requestDynamo, List<QueryResponse> responses) {
