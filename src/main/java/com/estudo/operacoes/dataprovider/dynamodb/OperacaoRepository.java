@@ -27,9 +27,14 @@ public class OperacaoRepository implements OperacaoProvider {
 
     public Mono<List<Operacao>> buscarOperacoesPorId(ConsultaRequest request, final QueryRequest requestDynamo) {
 
-        return Mono.just(request)
-
+        return reactiveRedisTemplate.keys("operacoes:")
+                .collectList()
                 .flatMap(x -> {
+                    System.out.println("parou");
+                 return  reactiveRedisTemplate.opsForValue().get(x.get(0), 0, 1);
+                })
+                .flatMap(x -> {
+
                     if (requestDynamo == null) {
                         var requestAux = QueryRequest.builder()
                                 .tableName("tb_operacoes")
@@ -44,7 +49,7 @@ public class OperacaoRepository implements OperacaoProvider {
                 })
                 .map(x -> this.operacaoMapper.fromMap(List.of(x), request))
                 .map(x -> {
-                    reactiveRedisTemplate.opsForList().leftPushAll("operacoes:", x).doOnNext(z -> {
+                    reactiveRedisTemplate.opsForList().leftPushAll("operacoes:" + request.getIdOperacao(), x).doOnNext(z -> {
                         System.out.println("salvo");
                     }).subscribe();
 
