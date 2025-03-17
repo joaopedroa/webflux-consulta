@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,6 +27,7 @@ public class OperacaoMapper {
     private final DadosDominioMapper dadosDominioMapper;
 
     public List<Operacao> fromMap(List<QueryResponse> response, ConsultaRequest request) {
+
         List<Map<String, AttributeValue>> items = response.stream().flatMap(x -> x.items().stream()).toList();
         return items.stream()
                 .map(item -> new OperacaoTable(

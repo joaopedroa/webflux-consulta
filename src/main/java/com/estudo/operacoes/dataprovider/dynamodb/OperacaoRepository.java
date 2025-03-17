@@ -5,6 +5,7 @@ import com.estudo.operacoes.core.models.Operacao;
 import com.estudo.operacoes.core.providers.OperacaoProvider;
 import com.estudo.operacoes.dataprovider.dynamodb.mappers.OperacaoMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Range;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.CollectionUtils;
@@ -14,6 +15,8 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -26,35 +29,31 @@ public class OperacaoRepository implements OperacaoProvider {
     private final ReactiveRedisTemplate<String, Operacao> reactiveRedisTemplate;
 
     public Mono<List<Operacao>> buscarOperacoesPorId(ConsultaRequest request, final QueryRequest requestDynamo) {
+        var requestDynamoPage = QueryRequest.builder()
+                .tableName("tb_operacoes")
+                .expressionAttributeValues(Map.of(":op", AttributeValue.builder().s(request.getIdOperacao()).build()))
+                .keyConditionExpression("#id_operacao = :op")
+                .expressionAttributeNames(Map.of("#id_operacao", "id_operacao"))
+                .limit(15)
+                .build();
 
-        return reactiveRedisTemplate.keys("operacoes:")
+        return reactiveRedisTemplate.opsForList().range("operacoes:" + request.getIdOperacao(), 0L, -1L)
+                .doOnNext(x -> System.out.println("achhhhou" + x.getOperacao().getIdOperacao()))
                 .collectList()
-                .flatMap(x -> {
-                    System.out.println("parou");
-                 return  reactiveRedisTemplate.opsForValue().get(x.get(0), 0, 1);
-                })
-                .flatMap(x -> {
-
-                    if (requestDynamo == null) {
-                        var requestAux = QueryRequest.builder()
-                                .tableName("tb_operacoes")
-                                .expressionAttributeValues(Map.of(":op", AttributeValue.builder().s(request.getIdOperacao()).build()))
-                                .keyConditionExpression("#id_operacao = :op")
-                                .expressionAttributeNames(Map.of("#id_operacao", "id_operacao"))
-                                .limit(15)
-                                .build();
-                        return Mono.fromCompletionStage(dynamoDbAsyncClient.query(requestAux));
-                    }
-                    return Mono.fromCompletionStage(dynamoDbAsyncClient.query(requestDynamo));
-                })
-                .map(x -> this.operacaoMapper.fromMap(List.of(x), request))
-                .map(x -> {
-                    reactiveRedisTemplate.opsForList().leftPushAll("operacoes:" + request.getIdOperacao(), x).doOnNext(z -> {
-                        System.out.println("salvo");
-                    }).subscribe();
-
-                    return x;
-                });
+                .filter(x -> !CollectionUtils.isEmpty(x))
+                .switchIfEmpty(
+                        this.getQueryResponse(request, requestDynamoPage, new ArrayList<>())
+//                                .map(x -> new ArrayList<Operacao>())
+                                .map(x -> operacaoMapper.fromMap(x, request))
+                                .filter(x -> !CollectionUtils.isEmpty(x))
+                                .map(x -> {
+                                    reactiveRedisTemplate.opsForList().leftPushAll("operacoes:" + request.getIdOperacao(), x).doOnNext(z -> {
+                                                System.out.println("salvo");
+                                            }).then(reactiveRedisTemplate.expire("operacoes:" + request.getIdOperacao(), Duration.ofSeconds(3)))
+                                            .subscribe();
+                                    return x;
+                                })
+                );
     }
 
     private Mono<List<QueryResponse>> getQueryResponse(ConsultaRequest consultaRequest, QueryRequest requestDynamo, List<QueryResponse> responses) {
