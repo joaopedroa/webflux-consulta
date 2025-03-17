@@ -38,13 +38,13 @@ public class OperacaoRepository implements OperacaoProvider {
                 .build();
 
         return reactiveRedisTemplate.opsForList().range("operacoes:" + request.getIdOperacao(), 0L, -1L)
-                .doOnNext(x -> System.out.println("achhhhou" + x.getOperacao().getIdOperacao()))
+                .filter(x -> x.getOperacao() != null)
                 .collectList()
                 .filter(x -> !CollectionUtils.isEmpty(x))
                 .switchIfEmpty(
                         this.getQueryResponse(request, requestDynamoPage, new ArrayList<>())
-//                                .map(x -> new ArrayList<Operacao>())
-                                .map(x -> operacaoMapper.fromMap(x, request))
+                                .map(x -> new ArrayList<Operacao>())
+//                                .map(x -> operacaoMapper.fromMap(x, request))
                                 .filter(x -> !CollectionUtils.isEmpty(x))
                                 .map(x -> {
                                     reactiveRedisTemplate.opsForList().leftPushAll("operacoes:" + request.getIdOperacao(), x).doOnNext(z -> {
@@ -52,7 +52,13 @@ public class OperacaoRepository implements OperacaoProvider {
                                             }).then(reactiveRedisTemplate.expire("operacoes:" + request.getIdOperacao(), Duration.ofSeconds(3)))
                                             .subscribe();
                                     return x;
-                                })
+                                }).switchIfEmpty(Mono.defer(() -> {
+                                    reactiveRedisTemplate.opsForList().leftPushAll("operacoes:" + request.getIdOperacao(), new Operacao())
+                                            .doOnNext(x -> System.out.println("salvando item vazio"))
+                                            .then(reactiveRedisTemplate.expire("operacoes:" + request.getIdOperacao(), Duration.ofSeconds(30)))
+                                            .subscribe();
+                                    return Mono.empty();
+                                }))
                 );
     }
 
